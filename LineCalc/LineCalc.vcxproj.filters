@@ -23,6 +23,8 @@
     <ClInclude Include="LaunchOptions.h"><Filter>ヘッダー ファイル</Filter></ClInclude>
     <ClInclude Include="DefinitionTemplate.h"><Filter>ヘッダー ファイル</Filter></ClInclude>
     <ClInclude Include="DisplayFont.h"><Filter>ヘッダー ファイル</Filter></ClInclude>
+    <ClInclude Include="PopupPlacement.h"><Filter>ヘッダー ファイル</Filter></ClInclude>
+    <ClInclude Include="WindowState.h"><Filter>ヘッダー ファイル</Filter></ClInclude>
     <ClInclude Include="targetver.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>

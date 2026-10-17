@@ -2,6 +2,8 @@
 #include "../LineCalc/History.h"
 #include "../LineCalc/LaunchOptions.h"
 #include "../LineCalc/DefinitionTemplate.h"
+#include "../LineCalc/PopupPlacement.h"
+#include "../LineCalc/WindowState.h"
 #include <cmath>
 #include <fstream>
 #include <iostream>
@@ -297,6 +299,49 @@ int main()
         history.clear();
         check(history.size() == 0, "Clear history");
         check(history.move(L"", true, false).empty(), "Empty history");
+        const RECT work{0, 0, 1920, 1040};
+        const RECT bottomRight{1700, 980, 1920, 1040};
+        const auto notification = popupBounds(work, &bottomRight, 76, 30, true);
+        check(notification.right == 1920 && notification.bottom == 980, "Bottom edge toast appears above parent");
+        const auto dialog = popupBounds(work, &bottomRight, 600, 360);
+        check(dialog.right <= work.right && dialog.bottom <= work.bottom && dialog.left >= work.left && dialog.top >= work.top, "Bottom right dialog stays inside work area");
+        const RECT normalParent{100, 100, 500, 160};
+        const auto below = popupBounds(work, &normalParent, 600, 360);
+        check(below.left == 100 && below.top == 160, "Popup uses space below when available");
+        const RECT negativeWork{-1600, -200, 0, 700};
+        const RECT negativeParent{-1550, 650, -1010, 700};
+        const auto negative = popupBounds(negativeWork, &negativeParent, 600, 360);
+        check(negative.left == -1550 && negative.bottom == 650, "Secondary monitor with negative coordinates");
+        const RECT smallWork{0, 0, 320, 200};
+        const auto small = popupBounds(smallWork, &normalParent, 600, 360);
+        check(small.left == 0 && small.top == 0 && small.right == 320 && small.bottom == 200, "Oversized dialog shrinks to fit work area");
+        const auto centered = popupBounds(negativeWork, nullptr, 600, 360);
+        check(centered.left == -1100 && centered.top == 70, "Ownerless dialog centers on target monitor");
+        const RECT outside{2000, 1200, 2400, 1260};
+        const auto clamped = popupBounds(work, &outside, 600, 360);
+        check(clamped.right == work.right && clamped.bottom == work.bottom, "Offscreen parent cannot place popup offscreen");
+        const auto fitted = fitWindowState({2000, 1200, 540, 80}, work);
+        check(fitted.x == 1380 && fitted.y == 960, "Window restored inside work area");
+        const auto fittedNegative = fitWindowState({-1800, -300, 540, 80}, negativeWork);
+        check(fittedNegative.x == -1600 && fittedNegative.y == -200, "Window supports negative monitor coordinates");
+        const auto fittedLarge = fitWindowState({0, 0, 1000, 400}, smallWork);
+        check(fittedLarge.width == 320 && fittedLarge.height == 200, "Large window fits smaller screen");
+        const auto statePath = std::filesystem::temp_directory_path() /
+            (L"LineCalc-window-test-" + std::to_wstring(GetCurrentProcessId()) + L".json");
+        check(!loadWindowState(statePath), "Missing window settings use defaults");
+        saveWindowState(statePath, {-1200, 200, 720, 80});
+        const auto loaded = loadWindowState(statePath);
+        check(loaded && loaded->x == -1200 && loaded->y == 200 && loaded->width == 720 && loaded->height == 80,
+            "Window settings JSON round trip");
+        {
+            std::ofstream invalid(statePath);
+            invalid << "{\"x\":0,\"y\":0,\"width\":-1,\"height\":80}";
+        }
+        bool rejected = false;
+        try { loadWindowState(statePath); }
+        catch (const std::exception&) { rejected = true; }
+        check(rejected, "Invalid window dimensions rejected");
+        std::filesystem::remove(statePath);
         std::cout << checks << " checks passed\n";
         return 0;
     }

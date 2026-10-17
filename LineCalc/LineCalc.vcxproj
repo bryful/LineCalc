@@ -153,6 +153,8 @@
     <ClInclude Include="LaunchOptions.h" />
     <ClInclude Include="DefinitionTemplate.h" />
     <ClInclude Include="DisplayFont.h" />
+    <ClInclude Include="PopupPlacement.h" />
+    <ClInclude Include="WindowState.h" />
     <ClInclude Include="LineCalc.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="targetver.h" />

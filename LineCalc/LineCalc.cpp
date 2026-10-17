@@ -6,6 +6,8 @@
 #include "History.h"
 #include "LaunchOptions.h"
 #include "DefinitionTemplate.h"
+#include "PopupPlacement.h"
+#include "WindowState.h"
 #include <commctrl.h>
 #include <commdlg.h>
 #include <dlgs.h>
@@ -88,16 +90,11 @@ namespace
             TextDialog dialog{text};
             RECT parent{};
             if (owner) GetWindowRect(owner, &parent);
-            else
-            {
-                RECT work{};
-                SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
-                parent.left = work.left + (work.right - work.left - 600) / 2;
-                parent.bottom = work.top + (work.bottom - work.top - 360) / 2;
-            }
+            const auto bounds = popupBounds(popupWorkArea(owner), owner ? &parent : nullptr, 600, 360);
             HWND window = CreateWindowExW(WS_EX_DLGMODALFRAME, L"LineCalcText", title.c_str(),
                 WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME,
-                parent.left, parent.bottom, 600, 360, owner, nullptr, GetModuleHandleW(nullptr), &dialog);
+                bounds.left, bounds.top, bounds.right - bounds.left, bounds.bottom - bounds.top,
+                owner, nullptr, GetModuleHandleW(nullptr), &dialog);
             if (!window)
             {
                 MessageBoxW(owner, text.c_str(), title.c_str(), MB_OK | MB_ICONERROR);
@@ -145,6 +142,8 @@ namespace
         History history;
         std::unique_ptr<Calculator> calculator;
         std::filesystem::path definitions;
+        std::filesystem::path windowStateFile;
+        bool rememberWindow = false;
 
         ~Application() { if (font) DeleteObject(font); }
         void setText(const std::wstring& text, bool result = false, std::optional<double> number = {})
@@ -194,9 +193,11 @@ namespace
             if (toast) DestroyWindow(toast);
             RECT rectangle{};
             GetWindowRect(window, &rectangle);
+            const auto bounds = popupBounds(popupWorkArea(window), &rectangle, 76, 30, true);
             toast = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | (topmost ? WS_EX_TOPMOST : 0),
                 L"STATIC", L"  OK  ", WS_POPUP | WS_BORDER | SS_CENTER | SS_CENTERIMAGE,
-                rectangle.right - 76, rectangle.bottom, 76, 30, window, nullptr, GetModuleHandleW(nullptr), nullptr);
+                bounds.left, bounds.top, bounds.right - bounds.left, bounds.bottom - bounds.top,
+                window, nullptr, GetModuleHandleW(nullptr), nullptr);
             if (toast)
             {
                 SendMessageW(toast, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
@@ -417,6 +418,27 @@ namespace
                     self->toast = nullptr;
                 }
                 return 0;
+            case WM_CLOSE:
+                if (self->rememberWindow)
+                {
+                    RECT bounds{};
+                    if (GetWindowRect(window, &bounds))
+                    {
+                        try
+                        {
+                            // 非アクティブ時も、タイトルバーだけでなく通常の高さを保存する。
+                            saveWindowState(self->windowStateFile,
+                                {bounds.left, bounds.top, bounds.right - bounds.left, self->outerHeight});
+                        }
+                        catch (const std::exception& error)
+                        {
+                            const auto text = self->windowStateFile.wstring() + L"\r\n位置とサイズを保存できません。\r\n" + Calculator::fromUtf8(error.what());
+                            MessageBoxW(window, text.c_str(), L"LineCalc — ERROR", MB_OK | MB_ICONERROR);
+                        }
+                    }
+                }
+                DestroyWindow(window);
+                return 0;
             case WM_DESTROY:
                 PostQuitMessage(0);
                 return 0;
@@ -446,6 +468,7 @@ namespace
         for (int i = 1; i < count; ++i) values.emplace_back(arguments[i]);
         LocalFree(arguments);
         auto result = resolveLaunchOptions(values, std::filesystem::current_path(), directory, directory / filename);
+        result.windowStateFile = directory / L"LineCalc.json";
         if (!result.debug && !result.createJs)
         {
             std::filesystem::create_directories(directory, error);
@@ -495,8 +518,20 @@ int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int)
             return result.success ? 0 : 1;
         }
         application.definitions = options.definitions;
+        application.windowStateFile = options.windowStateFile;
+        std::optional<WindowState> saved;
+        try
+        {
+            saved = loadWindowState(application.windowStateFile);
+        }
+        catch (const std::exception& error)
+        {
+            const auto text = application.windowStateFile.wstring() + L"\r\n位置とサイズを読み込めません。既定の位置で起動します。\r\n" + Calculator::fromUtf8(error.what());
+            MessageBoxW(nullptr, text.c_str(), L"LineCalc — ERROR", MB_OK | MB_ICONERROR);
+        }
         const auto window = CreateWindowExW(0, L"LineCalcWindow", L"LineCalc", MAIN_STYLE,
-            CW_USEDEFAULT, CW_USEDEFAULT, 540, 80, nullptr, nullptr, instance, &application);
+            saved ? saved->x : CW_USEDEFAULT, saved ? saved->y : CW_USEDEFAULT,
+            saved ? saved->width : 540, 80, nullptr, nullptr, instance, &application);
         if (!window) throw std::runtime_error("Cannot create main window");
         CalculatorHost host;
         host.setTopmost = [&](bool value) { application.setTopmost(value); };
@@ -510,7 +545,13 @@ int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int)
         application.calculator->initialize();
         application.setTopmost(true);
         application.calculator->loadDefinitions(application.definitions);
-        SetWindowPos(window, nullptr, 0, 0, 540, application.outerHeight, SWP_NOMOVE | SWP_NOZORDER);
+        RECT bounds{};
+        GetWindowRect(window, &bounds);
+        const auto restored = fitWindowState({bounds.left, bounds.top,
+            saved ? saved->width : 540, application.outerHeight}, popupWorkArea(window));
+        SetWindowPos(window, nullptr, restored.x, restored.y, restored.width,
+            application.currentHeight(), SWP_NOZORDER | SWP_NOACTIVATE);
+        application.rememberWindow = true;
         ShowWindow(window, SW_SHOWNORMAL);
         if (!application.collapsed) SetFocus(application.edit);
         MSG message{};

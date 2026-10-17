@@ -33,6 +33,14 @@ public static class LineCalcUi {
         return found;
     }
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out Rect r);
+    [DllImport("user32.dll")] private static extern IntPtr MonitorFromWindow(IntPtr h,uint flags);
+    [DllImport("user32.dll",EntryPoint="GetMonitorInfoW")] private static extern bool GetMonitorInfo(IntPtr m,ref MonitorInfo info);
+    [StructLayout(LayoutKind.Sequential)] private struct MonitorInfo { public uint Size; public Rect Monitor, Work; public uint Flags; }
+    public static Rect WorkArea(IntPtr window) {
+        var info=new MonitorInfo(); info.Size=(uint)Marshal.SizeOf<MonitorInfo>();
+        if(!GetMonitorInfo(MonitorFromWindow(window,2),ref info)) throw new InvalidOperationException("Cannot get monitor work area");
+        return info.Work;
+    }
     [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out Rect r);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h,IntPtr a,int x,int y,int w,int hgt,uint f);
@@ -51,6 +59,12 @@ function Read-Text([IntPtr]$Handle) {
 function Send-Key([int]$Key) {
     [void][LineCalcUi]::SendMessage($script:Edit, 0x100, [IntPtr]$Key, [IntPtr]::Zero)
 }
+function Assert-PopupInWorkArea([IntPtr]$Popup) {
+    $work=[LineCalcUi]::WorkArea($main)
+    $bounds=[LineCalcUi+Rect]::new()
+    [void][LineCalcUi]::GetWindowRect($Popup,[ref]$bounds)
+    Assert ($bounds.Left -ge $work.Left -and $bounds.Top -ge $work.Top -and $bounds.Right -le $work.Right -and $bounds.Bottom -le $work.Bottom) 'Popup extends outside monitor work area'
+}
 function Evaluate([string]$Source, [string]$Expected) {
     [void][LineCalcUi]::SetWindowText($script:Edit, $Source)
     Send-Key 13
@@ -67,6 +81,7 @@ function Invoke-TextFunction([string]$Source,[string]$Title) {
         Start-Sleep -Milliseconds 100
     }
     Assert ($dialog -ne [IntPtr]::Zero) "Missing dialog for $Source"
+    Assert-PopupInWorkArea $dialog
     $text=Read-Text ([LineCalcUi]::GetDlgItem($dialog,101))
     [void][LineCalcUi]::PostMessage($dialog,0x111,[IntPtr]1,[IntPtr]::Zero)
     Start-Sleep -Milliseconds 100
@@ -77,7 +92,11 @@ function Open-FontPicker {
     [void][LineCalcUi]::PostMessage($script:Edit,0x100,[IntPtr]13,[IntPtr]::Zero)
     for($attempt=0;$attempt -lt 100;$attempt++) {
         $dialog=[LineCalcUi]::FindDialog([uint32]$script:AppProcessId)
-        if($dialog -ne [IntPtr]::Zero) { return $dialog }
+        if($dialog -ne [IntPtr]::Zero) {
+            $sizeControl=[LineCalcUi]::GetDlgItem($dialog,0x472)
+            $styleControl=[LineCalcUi]::GetDlgItem($dialog,0x471)
+            if($sizeControl -ne [IntPtr]::Zero -and $styleControl -ne [IntPtr]::Zero -and ![LineCalcUi]::IsWindowEnabled($styleControl)) { return $dialog }
+        }
         Start-Sleep -Milliseconds 100
     }
     throw 'Font selection dialog did not open'
@@ -85,6 +104,10 @@ function Open-FontPicker {
 $script:Checks = 0
 $definitionFile=Join-Path $PSScriptRoot ('ui-smoke-' + [Guid]::NewGuid().ToString('N') + '.js')
 [IO.File]::WriteAllText($definitionFile,'// UI smoke test definitions')
+$stateFile=Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'LineCalc\LineCalc.json'
+$stateBackup=if(Test-Path -LiteralPath $stateFile) { [IO.File]::ReadAllBytes($stateFile) } else { $null }
+[void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($stateFile))
+[IO.File]::WriteAllText($stateFile,'{"x":900000,"y":900000,"width":720,"height":80}')
 $process = Start-Process -FilePath (Resolve-Path -LiteralPath $Executable) -ArgumentList ('-include "' + $definitionFile + '"') -WindowStyle Hidden -PassThru
 $script:AppProcessId=$process.Id
 try {
@@ -108,6 +131,10 @@ try {
     Assert ($main -ne [IntPtr]::Zero) 'Main window missing'
     [void][LineCalcUi]::ShowWindow($main,5)
     [void][LineCalcUi]::SendMessage($main,6,[IntPtr]1,[IntPtr]::Zero)
+    Assert-PopupInWorkArea $main
+    $restoredBounds=New-Object LineCalcUi+Rect
+    [void][LineCalcUi]::GetWindowRect($main,[ref]$restoredBounds)
+    Assert (($restoredBounds.Right-$restoredBounds.Left) -eq 720) 'Saved width was not restored'
     $script:Edit = [LineCalcUi]::FindWindowEx($main, [IntPtr]::Zero, 'Edit', $null)
     Assert ($script:Edit -ne [IntPtr]::Zero) 'Input missing'
     Assert ([LineCalcUi]::FindWindowEx($main, $script:Edit, $null, $null) -eq [IntPtr]::Zero) 'Unexpected controls'
@@ -264,6 +291,37 @@ try {
     Evaluate 'clearHis()' 'clearHis()'
     Send-Key 38
     Assert ((Read-Text $script:Edit) -eq '') 'History was not cleared'
+    Evaluate 'setTopmost(false)' ''
+    $work=[LineCalcUi]::WorkArea($main)
+    $mainBounds=[LineCalcUi+Rect]::new()
+    [void][LineCalcUi]::GetWindowRect($main,[ref]$mainBounds)
+    $width=$mainBounds.Right-$mainBounds.Left
+    $height=$mainBounds.Bottom-$mainBounds.Top
+    foreach($corner in @(
+        @($work.Left,$work.Top),@(($work.Right-$width),$work.Top),
+        @($work.Left,($work.Bottom-$height)),@(($work.Right-$width),($work.Bottom-$height))
+    )) {
+        [void][LineCalcUi]::SetWindowPos($main,[IntPtr]::Zero,[int]$corner[0],[int]$corner[1],0,0,0x15)
+        Evaluate '1+1' '2'
+        $notification=[LineCalcUi]::FindWindowEx([IntPtr]::Zero,[IntPtr]::Zero,'Static','  OK  ')
+        Assert ($notification -ne [IntPtr]::Zero) 'Corner notification missing'
+        Assert-PopupInWorkArea $notification
+        $details=Invoke-TextFunction '1+' 'LineCalc — ERROR'
+        Assert ($details.Length -gt 0) 'Corner error details missing'
+    }
+    Evaluate 'setTopmost(true)' ''
+    [void][LineCalcUi]::SendMessage($main,6,[IntPtr]1,[IntPtr]::Zero)
+    $details=Invoke-TextFunction '1+' 'LineCalc — ERROR'
+    Assert ($details.Length -gt 0) 'Topmost corner error details missing'
+    $normalBounds=New-Object LineCalcUi+Rect
+    [void][LineCalcUi]::GetWindowRect($main,[ref]$normalBounds)
+    [void][LineCalcUi]::SendMessage($main,6,[IntPtr]::Zero,[IntPtr]::Zero)
+    [void]$process.CloseMainWindow()
+    Assert ($process.WaitForExit(5000)) 'Application did not close'
+    $savedState=[IO.File]::ReadAllText($stateFile) | ConvertFrom-Json
+    Assert ($savedState.x -eq $normalBounds.Left -and $savedState.y -eq $normalBounds.Top) 'Window position was not saved'
+    Assert ($savedState.width -eq ($normalBounds.Right-$normalBounds.Left)) 'Window width was not saved'
+    Assert ($savedState.height -eq ($normalBounds.Bottom-$normalBounds.Top)) 'Collapsed window must save normal height'
     Write-Output "$script:Checks UI checks passed"
 }
 finally {
@@ -272,5 +330,7 @@ finally {
         if (!$process.WaitForExit(3000)) { $process.Kill() }
     }
     $process.Dispose()
+    if ($null -ne $stateBackup) { [IO.File]::WriteAllBytes($stateFile,$stateBackup) }
+    else { Remove-Item -LiteralPath $stateFile -ErrorAction SilentlyContinue }
     Remove-Item -LiteralPath $definitionFile
 }

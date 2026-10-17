@@ -9,6 +9,7 @@ struct LaunchOptions
     bool debug = false;
     bool createJs = false;
     std::filesystem::path definitions;
+    std::filesystem::path windowStateFile;
 };
 
 inline LaunchOptions resolveLaunchOptions(const std::vector<std::wstring>& arguments,
