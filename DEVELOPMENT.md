@@ -1,0 +1,46 @@
+# 開発・検証
+
+VS Code拡張機能は `vscode-linecalc/` にあります。開発・テスト・VSIXの作成方法は [拡張機能の開発文書](vscode-linecalc/DEVELOPMENT.md) を参照してください。C++本体と独立したJavaScriptプロジェクトです。
+
+## ビルド
+
+Visual Studio 2026、MSVC v145、Windows SDK、C++20、Unicode、x64のDebug／Releaseを使用します。`LineCalc.slnx` をVisual Studioで開いてビルドできます。既存のWin32構成も維持しています。中間・出力ディレクトリはVisual Studioの既定値を使用し、OutDir／IntDirの独自指定はありません。
+
+VS 2026のx64 Native Tools Command Promptで実行する場合:
+
+```bat
+MSBuild LineCalc.slnx /p:Configuration=Debug /p:Platform=x64
+MSBuild LineCalc.slnx /p:Configuration=Release /p:Platform=x64
+MSBuild Tests\Tests.vcxproj /p:Configuration=Debug /p:Platform=x64
+Tests\x64\Debug\Tests.exe
+```
+
+テストプロジェクトを直接ビルドする場合、テストの実行ファイルは `Tests\x64\Debug\Tests.exe` に出力されます。
+
+## 実装
+
+`WM_ACTIVATE` でアクティブ状態を追跡し、最前面かつ非アクティブのときだけEDITを隠して非クライアント領域のみの高さにします。通常時と縮小時の高さを分け、サイズ制約・フォント変更・DPI変更でも現在の表示状態に合う高さを使用します。復帰時は既存EDITを再表示するため入力と選択範囲を維持し、非アクティブのまま最前面を解除した場合も通常サイズへ戻します。
+
+アプリアイコンの元画像は `assets/LineCalc.png` です。選定されたA案（ダークな背景にミント色の `>` と白い `=`）を維持しています。`Tools/generate_icons.py` をPillowが利用可能なPythonで実行すると、16／20／24／32／40／48／64／96／128／256ピクセルを含む `LineCalc.ico` と `small.ico` を再生成します。通常のビルドでは同梱ICOを使用するため、PythonやPillowは不要です。
+
+表示フォントは `DisplayFont.h` でインストール済みの横書きフォント名を列挙・検証します。`setDisplayFont` は名前と1〜200ポイントのサイズを受け取り、DPIに応じてHFONTと1行分の高さを更新します。新しいフォントを作成・適用した後に以前のHFONTを解放し、失敗時は既存設定を維持します。`chooseDisplayFont` はWindows標準の選択画面を使い、書体名・サイズだけを扱うためスタイル選択を無効にしています。`getDisplayFont` の設定行はJSONの文字列エスケープを使用します。
+
+Win32の単一行EDITコントロールを使用します。DPIに応じて高さを固定し、幅だけを変更できます。計算エラーと一覧表示は選択・コピー可能な読み取り専用EDITを持つ確認ウィンドウ、成功通知はフォーカスを奪わないポップアップです。
+
+JavaScript実行環境はQuickJS-NG 0.17.0、構文解析はAcorn 8.15.0です。どちらもソースを同梱し、実行時の追加DLLやネットワーク取得を必要としません。QuickJSの結合版CソースはMSVC C17とC11 atomics対応オプションでビルドします。外部ソースだけ警告を抑制し、アプリ側は通常の警告設定を使います。
+
+Acornの構文木から、未初期化宣言の0補完、予約名の検査、数値代入の検査、最後の文に応じた表示制御を行います。実行にはグローバル評価を用い、letを含む環境を評価間で維持します。変数・関数一覧は入力および定義ファイルの構文木から取得した名前を参照します。
+
+実行時間は1回2秒、JSメモリは64MiB、JSスタック上限は2MiBです。ユーザーコードにファイル操作・プロセス起動などのネイティブAPIは公開しません。resetJSは実行の終了後に環境を破棄して再生成します。ユーザー定義ファイルのエラーは、仕様に従ってUI通知しません。
+
+## テスト
+
+`Tests.cpp` は四則演算、数値表記、宣言、複数文、ループ、再帰、履歴、予約メモリ、数値制約、ans、組み込み関数、定義ファイルの読み込みとreset、実行時間制限を検証します。
+
+`-debug [path]` は定義ファイル評価後に結果をモーダル表示して終了します。通常起動の読み込みエラーは引き続き通知しません。`loadDefinitions` の戻り値でデバッグ時のみエラーを表示し、成功0／失敗1を返します。Acornの構文エラーには元の行・列を付加し、実行時スタックの列位置は挿入・置換情報から元のソース位置に戻します。パス解決は `LaunchOptions.h` に分離し、検索順とオプション併用を自動テストしています。
+
+UIスモークテストは、ビルド済みのアプリを対象に `Tests\UiSmoke.ps1` で実行します。
+
+`Tests\DebugSmoke.ps1` は実際の `-debug` 起動について、成功・構文エラー・実行時エラー・ファイル不在・オプション併用・終了コードを確認します。各スクリプトの `-Executable` 引数でDebug／Releaseの対象を指定できます。
+
+`-createjs [path]` は `DefinitionTemplate.h` のコメントだけのUTF-8雛形を新規作成し、結果表示後に終了します。ファイル名だけならLocalAppData、明示的な相対パスならカレントを基準にします。Win32 `CREATE_NEW` で既存ファイルの上書きを防ぎます。書き込み失敗時は、新規作成したハンドルだけを削除対象にします。自動テストでパス選択、全組み込み関数の記載、コメント化、生成物の評価、既存内容の保持を確認し、CLIスモークテストでも作成と再評価を確認します。

@@ -1,0 +1,146 @@
+{
+  "name": "linecalc",
+  "displayName": "LineCalc",
+  "description": "LineCalcの定義ファイルを編集・検証・実行するWindows用拡張機能。",
+  "version": "0.1.1",
+  "publisher": "bryful",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "LineCalc",
+    "JavaScript",
+    "calculator"
+  ],
+  "icon": "images/icon.png",
+  "main": "./extension.js",
+  "extensionKind": [
+    "ui"
+  ],
+  "activationEvents": [
+    "onLanguage:javascript"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "入力補完・説明表示は利用できます。LineCalcによるコード実行は信頼済みワークスペースでのみ利用できます。"
+    },
+    "virtualWorkspaces": {
+      "supported": false
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "test:integration": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File test/run-integration.ps1",
+    "check": "node --check extension.js && node --check src/commands.js && node --check src/catalog.js && node --check src/editor.js",
+    "package": "vsce package --allow-missing-repository --no-rewrite-relative-links --no-dependencies"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^4.0.0"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "linecalc.open",
+        "title": "LineCalc::Open",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "linecalc.openIncludeDir",
+        "title": "LineCalc::OpenIncludeDir"
+      },
+      {
+        "command": "linecalc.debug",
+        "title": "LineCalc::debug",
+        "icon": "$(debug-alt)",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "linecalc.include",
+        "title": "LineCalc::include",
+        "icon": "$(play)",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "linecalc.registerExecutable",
+        "title": "LineCalc::RegisterExecutable"
+      },
+      {
+        "command": "linecalc.openDefinition",
+        "title": "LineCalc::OpenDefinition"
+      },
+      {
+        "command": "linecalc.createJs",
+        "title": "LineCalc::CreateJS",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "linecalc.start",
+        "title": "LineCalc::Start",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "linecalc.reference",
+        "title": "LineCalc::Reference"
+      }
+    ],
+    "configuration": {
+      "title": "LineCalc",
+      "properties": {
+        "linecalc.executablePath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "LineCalc.exeの絶対パス。`LineCalc::RegisterExecutable` から登録できます。"
+        },
+        "linecalc.enableCompletions": {
+          "type": "boolean",
+          "default": true,
+          "description": "JavaScriptファイルでLineCalcの組み込み関数・メモリ変数の入力補完を有効にします。"
+        },
+        "linecalc.enableHover": {
+          "type": "boolean",
+          "default": true,
+          "description": "LineCalcの組み込み関数・メモリ変数にマウスを合わせたときに説明を表示します。"
+        }
+      }
+    },
+    "menus": {
+      "editor/title": [
+        {
+          "command": "linecalc.debug",
+          "when": "resourceScheme == file && resourceExtname =~ /\\.js$/i",
+          "group": "navigation@40"
+        },
+        {
+          "command": "linecalc.include",
+          "when": "resourceScheme == file && resourceExtname =~ /\\.js$/i",
+          "group": "navigation@41"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "linecalc.debug",
+          "when": "resourceScheme == file && resourceExtname =~ /\\.js$/i",
+          "group": "linecalc@1"
+        },
+        {
+          "command": "linecalc.include",
+          "when": "resourceScheme == file && resourceExtname =~ /\\.js$/i",
+          "group": "linecalc@2"
+        }
+      ]
+    },
+    "snippets": [
+      {
+        "language": "javascript",
+        "path": "./snippets/javascript.json"
+      }
+    ]
+  }
+}

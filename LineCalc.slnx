@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="LineCalc/LineCalc.vcxproj" Id="ed922db5-a046-4971-b2d4-dc29e074173d" />
+</Solution>

@@ -1,0 +1,10 @@
+.vscode/**
+test/**
+.test-*/**
+.test-*
+node_modules/**
+package-lock.json
+DEVELOPMENT.md
+**/*.vsix
+**/*.log
+.gitignore

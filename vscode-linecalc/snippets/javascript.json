@@ -1,0 +1,17 @@
+{
+  "LineCalc function": {
+    "prefix": "lc-function",
+    "body": ["function ${1:triple}(${2:value}) {", "    return ${3:value * 3};", "}"],
+    "description": "LineCalcのユーザー定義関数"
+  },
+  "LineCalc display settings": {
+    "prefix": "lc-display",
+    "body": ["setTopmost(${1:true});", "setDisplayFont(\"${2:Consolas}\", ${3:14});"],
+    "description": "最前面表示とフォントの起動設定"
+  },
+  "LineCalc sum loop": {
+    "prefix": "lc-sum",
+    "body": ["function ${1:sumTo}(${2:limit}) {", "    let result = 0;", "    for (let i = 0; i < ${2:limit}; i++) {", "        result += i;", "    }", "    return result;", "}"],
+    "description": "数値変数を使うループ関数"
+  }
+}
