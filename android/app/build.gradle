@@ -1,0 +1,64 @@
+plugins { id 'com.android.application' }
+
+def releaseSigningFile = rootProject.file('../../LineCalc_signing/signing.properties')
+def releaseSigning = new Properties()
+if (releaseSigningFile.isFile()) {
+    releaseSigningFile.withInputStream { releaseSigning.load(it) }
+    ['storeFile', 'storePassword', 'keyAlias', 'keyPassword'].each { name ->
+        if (!releaseSigning.getProperty(name)) {
+            throw new GradleException("LineCalc_signing/signing.properties: missing ${name}")
+        }
+    }
+}
+
+android {
+    namespace 'io.github.bryful.linecalc'
+    compileSdk 35
+    ndkVersion '30.0.16248370'
+    signingConfigs {
+        release {
+            if (releaseSigningFile.isFile()) {
+                storeFile new File(releaseSigningFile.parentFile, releaseSigning.getProperty('storeFile'))
+                storePassword releaseSigning.getProperty('storePassword')
+                keyAlias releaseSigning.getProperty('keyAlias')
+                keyPassword releaseSigning.getProperty('keyPassword')
+            }
+        }
+    }
+    buildTypes {
+        release { signingConfig signingConfigs.release }
+    }
+    useLibrary 'android.test.runner', false
+    useLibrary 'android.test.base', false
+    defaultConfig {
+        applicationId 'io.github.bryful.linecalc'
+        minSdk 29
+        targetSdk 35
+        versionCode 1
+        versionName '1.0'
+        ndk { abiFilters 'arm64-v8a', 'x86_64' }
+        externalNativeBuild {
+            cmake { cppFlags '-std=c++20' }
+        }
+        testInstrumentationRunner 'android.test.InstrumentationTestRunner'
+    }
+    externalNativeBuild {
+        cmake { path 'src/main/cpp/CMakeLists.txt'; version '4.1.2' }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    sourceSets.main.assets.srcDir layout.buildDirectory.dir('generated/linecalcAssets')
+}
+
+tasks.register('prepareLineCalcAssets', Copy) {
+    into layout.buildDirectory.dir('generated/linecalcAssets')
+    from('../../LineCalc/Runtime.js')
+    from('../../vendor/acorn/dist/acorn.js')
+    from('../../LICENSE')
+    from('../../THIRD_PARTY_NOTICES.md')
+    from('../../vendor/quickjs/LICENSE') { rename { 'quickjs-LICENSE.txt' } }
+    from('../../vendor/acorn/LICENSE') { rename { 'acorn-LICENSE.txt' } }
+}
+tasks.named('preBuild').configure { dependsOn 'prepareLineCalcAssets' }

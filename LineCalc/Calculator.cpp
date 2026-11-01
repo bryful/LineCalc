@@ -1,4 +1,9 @@
+#ifndef __ANDROID__
 #include "framework.h"
+#else
+#include <codecvt>
+#include <locale>
+#endif
 #include "Calculator.h"
 #include <cmath>
 #include <fstream>
@@ -54,6 +59,7 @@ namespace
         return negative ? -static_cast<double>(number) : static_cast<double>(number);
     }
 
+#ifndef __ANDROID__
     std::string resourceText(int id)
     {
         const auto module = GetModuleHandleW(nullptr);
@@ -64,6 +70,7 @@ namespace
         if (!bytes) throw std::runtime_error("JavaScript resource cannot be loaded");
         return std::string(bytes, SizeofResource(module, resource));
     }
+#endif
 }
 
 Calculator::Calculator(CalculatorHost callbacks) : host(std::move(callbacks)) {}
@@ -71,22 +78,30 @@ Calculator::~Calculator() { destroy(); }
 
 std::string Calculator::toUtf8(const std::wstring& value)
 {
+#ifdef __ANDROID__
+    return std::wstring_convert<std::codecvt_utf8<wchar_t>>{}.to_bytes(value);
+#else
     if (value.empty()) return {};
     const int count = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()), nullptr, 0, nullptr, nullptr);
     if (!count) throw std::runtime_error("Invalid Unicode text");
     std::string result(count, '\0');
     WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()), result.data(), count, nullptr, nullptr);
     return result;
+#endif
 }
 
 std::wstring Calculator::fromUtf8(const std::string& value)
 {
+#ifdef __ANDROID__
+    return std::wstring_convert<std::codecvt_utf8<wchar_t>>{}.from_bytes(value);
+#else
     if (value.empty()) return {};
     const int count = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()), nullptr, 0);
     if (!count) throw std::runtime_error("Invalid UTF-8 text");
     std::wstring result(count, L'\0');
     MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()), result.data(), count);
     return result;
+#endif
 }
 
 void Calculator::destroy()
@@ -134,7 +149,13 @@ void Calculator::initialize()
     JS_FreeValue(context, global);
     for (const int id : {201, 202})
     {
-        auto value = run(resourceText(id), id == 201 ? "acorn.js" : "runtime.js");
+#ifdef __ANDROID__
+        if (!host.loadResource) throw std::runtime_error("JavaScript resource loader is missing");
+        const auto source = host.loadResource(id);
+#else
+        const auto source = host.loadResource ? host.loadResource(id) : resourceText(id);
+#endif
+        auto value = run(source, id == 201 ? "acorn.js" : "runtime.js");
         if (JS_IsException(value)) throw std::runtime_error(toUtf8(exceptionText()));
         JS_FreeValue(context, value);
     }
@@ -254,9 +275,13 @@ Evaluation Calculator::evaluate(const std::wstring& source)
             JS_FreeValue(context, formatter);
             if (JS_IsException(value)) exceptionText();
             else JS_FreeValue(context, value);
+#ifndef __ANDROID__
             const auto path = definitionPath;
+#endif
             initialize();
+#ifndef __ANDROID__
             loadDefinitions(path);
+#endif
             result.success = true;
             result.reset = true;
             return result;
@@ -386,16 +411,27 @@ JSValue Calculator::nativeCall(JSContext* context, JSValueConst, int count, JSVa
     {
         switch (operation)
         {
+#ifdef __ANDROID__
+        case TOPMOST:
+        case IS_TOPMOST:
+        case FONTS:
+        case SET_FONT:
+        case GET_FONT:
+        case CHOOSE_FONT:
+            return JS_ThrowTypeError(context, "この関数はAndroid版では使用できません。");
+#endif
         case RESET:
             if (self.loading) return JS_ThrowTypeError(context, "定義ファイルではresetJS()を実行できません。");
             self.resetRequested = true;
             return JS_ThrowInternalError(context, "resetJS");
+#ifndef __ANDROID__
         case TOPMOST:
             if (count && !JS_IsBool(arguments[0])) return JS_ThrowTypeError(context, "setTopmostには真偽値を指定してください。");
             if (self.host.setTopmost) self.host.setTopmost(count && JS_ToBool(context, arguments[0]));
             break;
         case IS_TOPMOST:
             return JS_NewBool(context, self.host.isTopmost && self.host.isTopmost());
+#endif
         case HEX:
         case BINARY:
         {
@@ -413,6 +449,7 @@ JSValue Calculator::nativeCall(JSContext* context, JSValueConst, int count, JSVa
         }
         case ANSWER:
             return self.answer ? JS_NewFloat64(context, *self.answer) : JS_NULL;
+#ifndef __ANDROID__
         case FONTS:
             if (self.host.showText && !self.loading)
             {
@@ -449,6 +486,7 @@ JSValue Calculator::nativeCall(JSContext* context, JSValueConst, int count, JSVa
             if (self.loading) return JS_ThrowTypeError(context, "定義ファイルではchooseDisplayFont()を実行できません。");
             if (self.host.chooseDisplayFont) self.host.chooseDisplayFont();
             break;
+#endif
         case CLEAR_HISTORY:
             if (self.host.clearHistory) self.host.clearHistory();
             break;

@@ -7,7 +7,15 @@
 #include <set>
 #include <string>
 #include "../vendor/quickjs/quickjs.h"
+#ifdef __ANDROID__
+struct DisplayFontSettings
+{
+    std::wstring name;
+    double size = 12;
+};
+#else
 #include "DisplayFont.h"
+#endif
 
 struct Evaluation
 {
@@ -20,6 +28,7 @@ struct Evaluation
 
 struct CalculatorHost
 {
+    std::function<std::string(int)> loadResource;
     std::function<void(bool)> setTopmost;
     std::function<bool()> isTopmost;
     std::function<void()> clearHistory;

@@ -1,5 +1,18 @@
 # LineCalc
 
+## 配布ファイル
+
+- Windows 10／11（64ビット）: `LineCalc.exe` を起動してください。
+- Android 10以降（arm64／x86_64）: [LineCalc-Android.apk](LineCalc-Android.apk) を端末で開いてインストールしてください。操作と初期JSの保存先は [Android版の案内](android/README.md) を参照してください。
+- Windows用VS Code拡張機能: `vscode-linecalc/linecalc-0.1.1.vsix` をVS Codeからインストールできます。
+
+Android APKはリリース用の鍵で署名しています。Debug版とは署名が異なるため上書きできません。Debug版を削除する場合は、必要な初期JSをあらかじめ保存してください。再インストール後に初期JSを読み込めない場合は、設定から該当フォルダーを選び直してください。
+
+WindowsでMSVCP140.dllやVCRUNTIME140.dllなどが見つからない場合は、Microsoft公式の[Visual C++再頒布可能パッケージ（x64）](https://learn.microsoft.com/ja-jp/cpp/windows/latest-supported-vc-redist)をインストールしてください。
+
+
+Android版の操作と初期読込JSについては [LineCalc for Android](android/README.md) を参照してください。
+
 Windows用の、入力欄が1つだけの計算機です。JavaScriptの式・条件分岐・ループ・ユーザー関数を実行できます。ウィンドウは横幅を変更でき、高さは1行分です。タイトルバーには閉じるボタンだけを表示します。
 
 ## 起動と操作

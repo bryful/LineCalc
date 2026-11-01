@@ -1,5 +1,32 @@
 # 開発・検証
 
+## Android版
+
+`android/` をAndroid Studioで開きます。JDK 17以降、Android SDK 35、NDK 30.0.16248370、CMake 4.1.2を使用します。Gradle Wrapperを同梱しています。SDKの場所は `ANDROID_HOME` または未追跡の `android/local.properties` の `sdk.dir` に指定します。
+
+```powershell
+cd android
+./gradlew.bat assembleDebug assembleRelease lintDebug
+# エミュレーターまたはテスト端末を接続して実行
+./gradlew.bat connectedDebugAndroidTest
+```
+
+Gradleのテスト実行ツールを取得できない場合は、`assembleDebugAndroidTest` でテストAPKを作成して、`adb -s <テスト端末ID> install -r` で本体とテストAPKをインストールした後、`adb -s <テスト端末ID> shell am instrument -w io.github.bryful.linecalc.test/android.test.InstrumentationTestRunner` でも実行できます。
+
+APKは標準の `android/app/build/outputs/apk/` 配下に生成します。Debug APKは開発用署名付き、Release APKはリリース用の鍵で署名します。arm64-v8aとx86_64、Android 10（API 29）以降に対応します。
+
+リリースの秘密鍵とパスワードは、リポジトリ `LineCalc` の隣の `LineCalc_signing/` に集約します。Gradleは同フォルダーの `signing.properties` を読み込み、`storeFile`（同フォルダーを基準とする相対パス）、`storePassword`、`keyAlias`、`keyPassword` を使用します。署名設定がない場合、Releaseのビルドは失敗します。Debugのビルドには不要です。鍵と設定ファイルはリポジトリに含めず、更新版にも同じ鍵を使用します。Release APKは `android/app/build/outputs/apk/release/app-release.apk` に生成します。
+
+画面はAndroid標準のJava APIで実装し、追加のUIライブラリは使いません。JNIから既存の `Calculator.cpp` と同梱QuickJS-NGを呼び出し、AcornとRuntime.jsもWindows版と同じファイルをビルド時に取り込みます。Android固有のリソース取得・Unicode変換・非対応関数の処理だけを条件分岐しています。
+
+専用キーボードは `CalculatorKeyboard.java` で数値・QWERTY英字・JS記号の3面を構成します。入力先は既存のEditTextで、選択・コピー・貼り付けと物理キーボードの操作を維持します。専用キーボード使用時はIMEの自動表示を止め、標準キーボードへの切替設定はSharedPreferencesに保存します。面・大文字状態・入力選択範囲は画面回転時にセッションから復元します。削除と左右移動はUnicodeコードポイント単位で処理し、長押しリピートは指を離したとき・キャンセル・画面離脱・計算開始時に停止します。統合テストではこれらの編集操作、長押し停止、キーボード切替も確認します。
+
+JavaScriptは専用の単一ワーカースレッドで実行します。画面回転時にはActivityから独立したセッションを引き継ぎます。初期JSはMediaStore.Filesで `Documents/LineCalc/LineCalc.js` に作成し、初回のフォルダー選択やストレージ全体のアクセス権を要求しません。設定変更時だけStorage Access Frameworkを使用し、フォルダーの永続URI権限を保持します。既存ファイルを参照できない場合に別名の雛形を作らないよう検査します。
+
+ネイティブ側にはアプリ内部のキャッシュに保存したUTF-8のスナップショットを渡します。ユーザー定義の読込は起動・明示的な再読込・検証・resetJSのときに限り、通常の計算では共有ファイルを読みません。検証は別のJS環境で実行します。AndroidのresetJSは実行終了後にJava側で共有ファイルを読み直して適用します。
+
+Androidの統合テストは、計算互換性、数値制約、メモリ、日本語識別子、DocumentsのJS編集と再読込、読込エラー、検証の独立性、タイムアウト後の復帰、画面の入力・実行操作を確認します。テストは定義ファイルを一時変更して最後に元に戻すため、専用のエミュレーターを使用してください。
+
 VS Code拡張機能は `vscode-linecalc/` にあります。開発・テスト・VSIXの作成方法は [拡張機能の開発文書](vscode-linecalc/DEVELOPMENT.md) を参照してください。C++本体と独立したJavaScriptプロジェクトです。
 
 ## ビルド

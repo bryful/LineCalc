@@ -1,0 +1,6 @@
+<resources>
+    <item name="calculation" type="id" />
+    <string name="ready">JavaScript · 実行／Enterで計算</string>
+    <string name="busy">実行中…</string>
+    <string name="definition_location">初期JSの読込先\n%1$s</string>
+</resources>

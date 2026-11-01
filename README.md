@@ -1,5 +1,7 @@
 # LineCalc
 
+Android版の操作と初期読込JSについては [LineCalc for Android](android/README.md) を参照してください。
+
 Windows用の、入力欄が1つだけの計算機です。JavaScriptの式・条件分岐・ループ・ユーザー関数を実行できます。ウィンドウは横幅を変更でき、高さは1行分です。タイトルバーには閉じるボタンだけを表示します。
 
 ## 起動と操作
